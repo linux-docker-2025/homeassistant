@@ -1,0 +1,79 @@
+---
+- name: Install Home Assistant using Docker Compose
+  hosts: all
+  become: true
+
+  tasks:
+    - name: Ensure Docker is installed
+      apt:
+        name: docker.io
+        state: present
+      tags: docker
+
+    - name: Install Docker Compose
+      apt:
+        name: docker-compose
+        state: present
+      tags: docker
+
+    - name: Create directory for Home Assistant
+      file:
+        path: /opt/stacks/hass
+        state: directory
+        mode: '0755'
+
+    - name: Create Docker Compose file
+      copy:
+        dest: /opt/stacks/hass/compose.yaml
+        content: |
+          version: '3'
+          services:
+            homeassistant:
+              container_name: homeassistant
+              image: "ghcr.io/home-assistant/home-assistant:stable"
+              volumes:
+                - /opt/stacks/hass/hass-config:/config
+                - /etc/localtime:/etc/localtime:ro
+              restart: unless-stopped
+              privileged: true
+              network_mode: host
+            nodered:
+              container_name: nodered
+              image: nodered/node-red
+              ports:
+                - 1880:1880
+              volumes:
+                - /opt/stacks/hass/nodered:/data
+              depends_on:
+                - homeassistant
+                - mosquitto
+              environment:
+                - TZ=Europe/London
+              restart: unless-stopped
+            mosquitto:
+              image: eclipse-mosquitto
+              container_name: mosquitto
+              restart: unless-stopped
+              ports:
+                - 1883:1883
+                - 9001:9001
+              volumes:
+                - "/opt/stacks/hass/mosquitto/config:/mosquitto/config"
+                - "/opt/stacks/hass/mosquitto/data:/mosquitto/data"
+                - "/opt/stacks/hass/mosquitto/log:/mosquitto/log"
+              environment:
+                - TZ=Europe/London
+              user: "${PUID}:${PGID}"
+            hass-configurator:
+              image: "causticlab/hass-configurator-docker:latest"
+              restart: always
+              ports:
+                - "3218:3218/tcp"
+              volumes:
+                - "/opt/stacks/hass/configurator-config:/config"
+                - "/opt/stacks/hass/hass-config:/hass-config"
+
+    - name: Start Home Assistant with Docker Compose
+      command: docker-compose up -d
+      args:
+        chdir: /opt/stacks/hass
