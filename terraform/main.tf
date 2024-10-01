@@ -1,6 +1,6 @@
-# Define the VirtualBox provider
+# Provider configuration for VirtualBox
 provider "virtualbox" {
-  # Optional, specify the path to VBoxManage if not in PATH
+  # Assuming VirtualBox and Terraform are both installed on officepc
   vboxmanage_path = "/usr/bin/VBoxManage"
 }
 
@@ -8,33 +8,48 @@ terraform {
   required_providers {
     virtualbox = {
       source  = "local/virtualbox"
-      version = "6.1.50"  # Specify the version you installed
+      version = "6.1.50"
     }
   }
 }
 
-provider "virtualbox" {
-  # Optional configurations
+# Use SSH provisioner to control VirtualBox on officepc
+provider "null" {}
+
+# Define the SSH connection to the officepc
+resource "null_resource" "remote_virtualbox" {
+  provisioner "remote-exec" {
+    connection {
+      type        = "ssh"
+      host        = "192.168.1.101"  # IP address of officepc
+      user        = "daniel"  # Replace with your SSH username
+      private_key = file("private/key")  # Path to your SSH private key
+    }
+
+    # Command to trigger Terraform on the remote machine
+    inline = [
+      "cd /home/daniel/terraform/ && terraform init && terraform apply -auto-approve"
+    ]
+  }
 }
 
-
-# Define a VirtualBox VM resource
+# Define a VirtualBox VM resource on officepc
 resource "virtualbox_vm" "debian_vm" {
   name      = "Debian_VM"
-  ostype    = "Debian_64"   # Define the OS type
-  cpus      = 2             # Number of CPUs
-  memory    = 2048          # Memory size in MB
+  ostype    = "Debian_64"
+  cpus      = 2
+  memory    = 2048
 
-  # VM settings
-  image = "~/Downloads/debian-12.7.0-amd64-netinst.iso"  # Path to your Debian ISO file
+  image = "/home/daniel/Downloads/debian-12.7.0-amd64-netinst.iso"
+
   vrde {
-    enabled = true  # Enable Remote Desktop Protocol (RDP)
-    port    = 5000  # RDP port
+    enabled = true
+    port    = 5000
   }
 
   network_adapter {
-    type           = "bridged"  # Network type, can be "bridged", "hostonly", or "nat"
-    host_interface = "en0"      # Name of the host interface, adjust based on your setup
+    type           = "bridged"
+    host_interface = "en0"
   }
 
   storage {
@@ -42,21 +57,19 @@ resource "virtualbox_vm" "debian_vm" {
     controller   = "IntelAhci"
     port_count   = 1
     bootable     = true
-    medium_path  = "debian_vm_disk.vdi"  # Virtual disk file
-    size         = 20000                 # Disk size in MB
-    medium_type  = "normal"              # Disk type: normal, immutable, writethrough, etc.
+    medium_path  = "debian_vm_disk.vdi"
+    size         = 20000
+    medium_type  = "normal"
   }
-  
-  # Attach the ISO for installation
+
   dvd {
     name       = "Debian ISO"
-    medium     = "file:~/Downloads/debian-12.7.0-amd64-netinst.iso"  # Replace with the path to your Debian ISO
+    medium     = "/home/daniel/Downloads/debian-12.7.0-amd64-netinst.iso"
     device     = "sata"
     port       = 1
     drive_type = "dvddrive"
   }
 
-  # Additional options
   options = [
     "--ioapic", "on",
     "--boot1", "dvd",
@@ -64,7 +77,7 @@ resource "virtualbox_vm" "debian_vm" {
   ]
 }
 
-# Output the IP address of the VM once it’s created
+# Output the IP address of the VM once it's created
 output "vm_ip" {
   value = virtualbox_vm.debian_vm.ipv4_address
 }
